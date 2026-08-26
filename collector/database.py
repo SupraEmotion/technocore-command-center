@@ -68,9 +68,41 @@ class Database:
             ),
         )
 
-        self.connection.commit()
-
         return cursor.rowcount == 1
+
+    def save_batch(
+        self,
+        room: str,
+        messages: list[dict[str, Any]],
+        last_seq: int,
+    ) -> int:
+        saved = 0
+
+        try:
+            self.connection.execute("BEGIN")
+
+            for message in messages:
+                if self.save_message(room, message):
+                    saved += 1
+
+            if messages and last_seq > self.get_cursor(room):
+                self.connection.execute(
+                    """
+                    INSERT INTO cursors(room, last_seq)
+                    VALUES (?, ?)
+                    ON CONFLICT(room)
+                    DO UPDATE SET last_seq = excluded.last_seq
+                    """,
+                    (room, last_seq),
+                )
+
+            self.connection.commit()
+
+            return saved
+
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def get_cursor(self, room: str) -> int:
         row = self.connection.execute(
