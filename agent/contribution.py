@@ -166,10 +166,9 @@ def evaluate_candidate(
 if __name__ == "__main__":
     import sqlite3
 
-    db = sqlite3.connect(
-        "/opt/technocore-command-center/data/technocore.db"
-    )
-    db.row_factory = sqlite3.Row
+    from agent.db import connect
+
+    db = connect()
 
     rows = db.execute("""
         SELECT seq, text

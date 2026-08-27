@@ -5,7 +5,8 @@ import time
 from pathlib import Path
 
 from agent.approval import get as get_approval, mark_published
-from agent.state import DB_PATH, record_event
+from agent.db import DB_PATH, connect
+from agent.state import record_event
 
 from sys import path as sys_path
 
@@ -28,7 +29,7 @@ KEY_PATH = DID_STARTER / "identity.pem"
 
 
 def get_candidate(candidate_id: int) -> sqlite3.Row:
-    db = sqlite3.connect(DB_PATH)
+    db = connect(DB_PATH)
     db.row_factory = sqlite3.Row
 
     try:
@@ -67,7 +68,7 @@ def find_committed_write(
 
     Matching requires DID + nonce + exact text.
     """
-    db = sqlite3.connect(DB_PATH)
+    db = connect(DB_PATH)
     db.row_factory = sqlite3.Row
 
     try:

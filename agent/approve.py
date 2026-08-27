@@ -3,13 +3,13 @@ from __future__ import annotations
 import sqlite3
 import sys
 
+from agent.db import connect
 from agent.approval import decide
-from agent.state import DB_PATH
+from agent.db import DB_PATH
 
 
 def show_candidate(candidate_id: int) -> sqlite3.Row:
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
+    db = connect(DB_PATH)
 
     try:
         row = db.execute(

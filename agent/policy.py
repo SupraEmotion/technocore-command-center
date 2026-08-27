@@ -127,6 +127,20 @@ def classify(text: str) -> Decision:
         for pattern in question_starts
     )
 
+    # Real conversations often contain context before the actual
+    # technical question, so interrogative detection must not require
+    # the whole message to start with "what/how/why/etc.".
+    question_clauses = re.split(r"[.!;\n]+|\s+[-—]\s+", without_urls)
+
+    has_embedded_question = any(
+        "?" in clause
+        and any(
+            re.search(pattern, clause.strip())
+            for pattern in question_starts
+        )
+        for clause in question_clauses
+    )
+
     has_technical_context = any(
         re.search(rf"\b{re.escape(term)}\b", without_urls)
         for term in technical_question_terms
@@ -134,7 +148,7 @@ def classify(text: str) -> Decision:
 
     if (
         has_question_mark
-        and has_question_start
+        and (has_question_start or has_embedded_question)
         and has_technical_context
     ):
         return Decision(

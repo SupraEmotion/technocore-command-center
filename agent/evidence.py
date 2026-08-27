@@ -5,7 +5,8 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
-from agent.state import DB_PATH, now
+from agent.db import DB_PATH, connect
+from agent.state import now
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,7 @@ def inspect_message(
     if not topics:
         return []
 
-    db = sqlite3.connect(DB_PATH)
+    db = connect(DB_PATH)
     db.row_factory = sqlite3.Row
 
     try:
@@ -199,7 +200,7 @@ def mark_contribution(
     fp: str,
 ) -> None:
 
-    db = sqlite3.connect(DB_PATH)
+    db = connect(DB_PATH)
 
     try:
         db.execute("""

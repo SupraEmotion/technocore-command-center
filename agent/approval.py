@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from agent.state import DB_PATH
+from agent.db import DB_PATH, connect
 
 
 @dataclass(frozen=True)
@@ -26,15 +26,7 @@ VALID_STATUSES = {
 }
 
 
-def now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def connect() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH, timeout=10.0)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout = 10000")
-
+def ensure_schema(db: sqlite3.Connection) -> None:
     db.execute("""
         CREATE TABLE IF NOT EXISTS agent_approvals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,18 +40,16 @@ def connect() -> sqlite3.Connection:
                 REFERENCES agent_candidates(id)
         )
     """)
-
-    db.execute("""
-        CREATE INDEX IF NOT EXISTS idx_agent_approvals_status
-        ON agent_approvals(status)
-    """)
-
     db.commit()
-    return db
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def create_pending(candidate_id: int) -> Approval:
-    db = connect()
+    db = connect(DB_PATH)
+    ensure_schema(db)
 
     try:
         existing = db.execute(
@@ -106,7 +96,8 @@ def create_pending(candidate_id: int) -> Approval:
 
 
 def get(candidate_id: int) -> Approval | None:
-    db = connect()
+    db = connect(DB_PATH)
+    ensure_schema(db)
 
     try:
         row = db.execute(
@@ -139,7 +130,8 @@ def decide(
             "decision status must be 'approved' or 'rejected'"
         )
 
-    db = connect()
+    db = connect(DB_PATH)
+    ensure_schema(db)
 
     try:
         row = db.execute(
@@ -200,7 +192,8 @@ def decide(
 
 
 def mark_published(candidate_id: int) -> Approval:
-    db = connect()
+    db = connect(DB_PATH)
+    ensure_schema(db)
 
     try:
         row = db.execute(
@@ -252,7 +245,8 @@ def mark_published(candidate_id: int) -> Approval:
 
 
 def pending() -> list[Approval]:
-    db = connect()
+    db = connect(DB_PATH)
+    ensure_schema(db)
 
     try:
         rows = db.execute(

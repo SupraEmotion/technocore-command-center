@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from agent.db import connect
 from agent.policy import evaluate_message
 from agent.state import already_seen, record_event
 from agent.contribution import evaluate_candidate
@@ -13,8 +14,7 @@ OUR_DID = "did:key:z6Mkm5chQcHX2V4RbPHucxpzgpsyQMTdFgMpX7BtcXZaeU9e"
 
 
 def get_messages(limit: int = 200) -> list[sqlite3.Row]:
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
+    db = connect(DB_PATH)
 
     try:
         return db.execute(

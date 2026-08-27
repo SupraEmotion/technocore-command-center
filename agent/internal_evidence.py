@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+
 from dataclasses import dataclass
 
-from agent.state import DB_PATH
+from agent.db import DB_PATH, connect
 
 
 @dataclass(frozen=True)
@@ -15,7 +16,7 @@ class InternalEvidence:
 
 
 def collect_internal_evidence() -> list[InternalEvidence]:
-    db = sqlite3.connect(DB_PATH)
+    db = connect(DB_PATH)
     db.row_factory = sqlite3.Row
 
     try:

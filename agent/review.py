@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from agent.db import connect
 from agent.contribution import ContributionCandidate
 from agent.evidence import Evidence
 from agent.internal_evidence import collect_internal_evidence
@@ -12,8 +13,7 @@ DB_PATH = "/opt/technocore-command-center/data/technocore.db"
 
 
 def build_review_queue(limit: int = 20) -> list[dict]:
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
+    db = connect(DB_PATH)
 
     try:
         rows = db.execute("""
@@ -51,8 +51,7 @@ def build_review_queue(limit: int = 20) -> list[dict]:
 
         # Reconstruct the external evidence from the original source
         # message without running novelty again.
-        db = sqlite3.connect(DB_PATH)
-        db.row_factory = sqlite3.Row
+        db = connect(DB_PATH)
 
         source = db.execute("""
             SELECT seq, text
