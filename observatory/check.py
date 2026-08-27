@@ -1,4 +1,4 @@
-"""Snapshot public Technocore protocol metadata into SQLite."""
+"""Snapshot and report changes in public Technocore protocol metadata."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ import hashlib
 import json
 
 from collector.database import Database
-from .protocol import DEFAULT_BASE_URL, snapshot, parse_json
+from .diff import classify_endpoint, json_diff
+from .protocol import DEFAULT_BASE_URL, parse_json, snapshot
 
 
 def body_hash(body: str | None) -> str:
-    data = (body or "").encode("utf-8")
-    return hashlib.sha256(data).hexdigest()
+    return hashlib.sha256((body or "").encode("utf-8")).hexdigest()
 
 
 def extract_version(observation) -> str | None:
@@ -22,13 +22,34 @@ def extract_version(observation) -> str | None:
         return None
 
     value = parsed.get("version")
-
     return str(value) if value is not None else None
+
+
+def describe_changes(endpoint: str, old_body: str | None, new_body: str | None):
+    changes = json_diff(old_body, new_body)
+
+    if changes:
+        print(f"           category={classify_endpoint(endpoint)}")
+        print(f"           changes={len(changes)}")
+
+        for change in changes[:20]:
+            print(
+                f"           {change['type']:7} "
+                f"{change['path']}: "
+                f"{change['old']!r} -> {change['new']!r}"
+            )
+
+        if len(changes) > 20:
+            print(f"           ... {len(changes) - 20} more changes")
+
+    else:
+        print(f"           category={classify_endpoint(endpoint)}")
+        print("           body changed but no structured JSON diff")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Snapshot public Technocore protocol metadata."
+        description="Snapshot and detect Technocore protocol changes."
     )
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--timeout", type=float, default=20.0)
@@ -42,20 +63,23 @@ def main() -> None:
             timeout=args.timeout,
         )
 
+        changes_detected = 0
+
         for observation in observations:
             digest = body_hash(observation.body)
             version = extract_version(observation)
 
-            latest = db.get_latest_protocol_snapshot(
+            previous = db.get_latest_protocol_snapshot(
                 observation.name
             )
 
-            if latest is None:
+            if previous is None:
                 state = "NEW"
-            elif latest["body_hash"] == digest:
+            elif previous["body_hash"] == digest:
                 state = "UNCHANGED"
             else:
                 state = "CHANGED"
+                changes_detected += 1
 
             saved = db.save_protocol_snapshot(
                 endpoint=observation.name,
@@ -80,6 +104,16 @@ def main() -> None:
 
             if observation.error:
                 print(f"           error={observation.error}")
+
+            if state == "CHANGED":
+                describe_changes(
+                    observation.name,
+                    previous["body"],
+                    observation.body,
+                )
+
+        print()
+        print(f"changes_detected={changes_detected}")
 
     finally:
         db.close()
