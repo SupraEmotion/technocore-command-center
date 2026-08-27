@@ -25,26 +25,34 @@ def extract_version(observation) -> str | None:
     return str(value) if value is not None else None
 
 
-def describe_changes(endpoint: str, old_body: str | None, new_body: str | None):
+def describe_changes(endpoint: str, old_body: str | None, new_body: str | None) -> tuple[int, str]:
     changes = json_diff(old_body, new_body)
 
+    category = classify_endpoint(endpoint)
+
     if changes:
-        print(f"           category={classify_endpoint(endpoint)}")
+        print(f"           category={category}")
         print(f"           changes={len(changes)}")
 
+        lines = []
+
         for change in changes[:20]:
-            print(
-                f"           {change['type']:7} "
-                f"{change['path']}: "
+            line = (
+                f"{change['type']} {change['path']}: "
                 f"{change['old']!r} -> {change['new']!r}"
             )
+            lines.append(line)
+            print(f"           {line}")
 
         if len(changes) > 20:
             print(f"           ... {len(changes) - 20} more changes")
 
-    else:
-        print(f"           category={classify_endpoint(endpoint)}")
-        print("           body changed but no structured JSON diff")
+        return len(changes), "; ".join(lines)
+
+    print(f"           category={category}")
+    print("           body changed but no structured JSON diff")
+
+    return 1, "Response body changed; no structured JSON diff available."
 
 
 def main() -> None:
@@ -106,11 +114,28 @@ def main() -> None:
                 print(f"           error={observation.error}")
 
             if state == "CHANGED":
-                describe_changes(
+                change_count, change_summary = describe_changes(
                     observation.name,
                     previous["body"],
                     observation.body,
                 )
+
+                if saved is None:
+                    raise RuntimeError(
+                        f"Expected a new snapshot for changed endpoint "
+                        f"{observation.name}"
+                    )
+
+                change_id = db.save_protocol_change(
+                    endpoint=observation.name,
+                    category=classify_endpoint(observation.name),
+                    previous_snapshot_id=int(previous["id"]),
+                    current_snapshot_id=int(saved),
+                    change_count=change_count,
+                    summary=change_summary,
+                )
+
+                print(f"           research_change_id={change_id}")
 
         print()
         print(f"changes_detected={changes_detected}")
