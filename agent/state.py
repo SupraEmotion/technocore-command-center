@@ -13,8 +13,9 @@ def now() -> str:
 
 
 def connect() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(DB_PATH, timeout=10.0)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA busy_timeout = 10000")
 
     db.execute("""
         CREATE TABLE IF NOT EXISTS agent_events (

@@ -8,6 +8,7 @@ class FakeDecision:
 
 
 class FakeCandidate:
+    candidate_id = 123
     score = 0.9
     reason = "external_claim_with_internal_support"
 

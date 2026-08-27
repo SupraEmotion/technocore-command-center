@@ -5,6 +5,7 @@ import sqlite3
 from agent.policy import evaluate_message
 from agent.state import already_seen, record_event
 from agent.contribution import evaluate_candidate
+from agent.approval import create_pending
 
 
 DB_PATH = "/opt/technocore-command-center/data/technocore.db"
@@ -79,6 +80,10 @@ def analyse(limit: int = 200) -> dict[str, int]:
             candidate = evaluate_candidate(seq, text)
 
             if candidate is not None:
+                candidate_id = candidate.candidate_id
+
+                create_pending(candidate_id)
+
                 record_event(
                     "candidate_created",
                     source_seq=seq,

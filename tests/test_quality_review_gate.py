@@ -15,6 +15,7 @@ def candidate(
     score=0.9,
 ):
     return ContributionCandidate(
+        candidate_id=1,
         source_seq=100,
         topic="signed_write",
         score=score,
