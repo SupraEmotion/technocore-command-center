@@ -42,6 +42,24 @@ class Database:
                 room TEXT PRIMARY KEY,
                 last_seq INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS protocol_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                endpoint TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status INTEGER,
+                content_type TEXT,
+                body_hash TEXT NOT NULL,
+                body TEXT,
+                version TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_protocol_snapshots_endpoint
+                ON protocol_snapshots(endpoint, observed_at);
+
+            CREATE INDEX IF NOT EXISTS idx_protocol_snapshots_hash
+                ON protocol_snapshots(endpoint, body_hash);
             """
         )
 
@@ -128,6 +146,76 @@ class Database:
         )
 
         self.connection.commit()
+
+    def save_protocol_snapshot(
+        self,
+        endpoint: str,
+        path: str,
+        status: int | None,
+        content_type: str | None,
+        body_hash: str,
+        body: str | None,
+        version: str | None = None,
+        observed_at: str | None = None,
+    ) -> bool:
+        """
+        Save a protocol observation only when its response hash differs
+        from the most recent observation for the same endpoint.
+        """
+
+        previous = self.connection.execute(
+            """
+            SELECT body_hash
+            FROM protocol_snapshots
+            WHERE endpoint = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (endpoint,),
+        ).fetchone()
+
+        if previous and previous["body_hash"] == body_hash:
+            return False
+
+        self.connection.execute(
+            """
+            INSERT INTO protocol_snapshots
+            (observed_at, endpoint, path, status, content_type,
+             body_hash, body, version)
+            VALUES (
+                COALESCE(?, CURRENT_TIMESTAMP),
+                ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                observed_at,
+                endpoint,
+                path,
+                status,
+                content_type,
+                body_hash,
+                body,
+                version,
+            ),
+        )
+
+        self.connection.commit()
+        return True
+
+    def get_latest_protocol_snapshot(
+        self,
+        endpoint: str,
+    ) -> sqlite3.Row | None:
+        return self.connection.execute(
+            """
+            SELECT *
+            FROM protocol_snapshots
+            WHERE endpoint = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (endpoint,),
+        ).fetchone()
 
     def close(self) -> None:
         self.connection.close()
