@@ -8,6 +8,8 @@ import json
 
 from collector.database import Database
 from .diff import classify_endpoint, json_diff
+from .impact import assess_changes, highest_priority
+from .semantic import classify_changes, summarize_categories
 from .protocol import DEFAULT_BASE_URL, parse_json, snapshot
 
 
@@ -25,34 +27,61 @@ def extract_version(observation) -> str | None:
     return str(value) if value is not None else None
 
 
-def describe_changes(endpoint: str, old_body: str | None, new_body: str | None) -> tuple[int, str]:
+def describe_changes(
+    endpoint: str,
+    old_body: str | None,
+    new_body: str | None,
+) -> tuple[int, str, str, list[dict]]:
     changes = json_diff(old_body, new_body)
 
-    category = classify_endpoint(endpoint)
+    endpoint_category = classify_endpoint(endpoint)
 
     if changes:
-        print(f"           category={category}")
-        print(f"           changes={len(changes)}")
+        classified = classify_changes(endpoint, changes)
+        categories = summarize_categories(classified)
+
+        print(f"           category={endpoint_category}")
+        print(f"           changes={len(classified)}")
+        print(f"           semantic={categories}")
 
         lines = []
 
-        for change in changes[:20]:
+        for change in classified[:20]:
             line = (
                 f"{change['type']} {change['path']}: "
-                f"{change['old']!r} -> {change['new']!r}"
+                f"{change['old']!r} -> {change['new']!r} "
+                f"[{change['category']}]"
             )
             lines.append(line)
             print(f"           {line}")
 
-        if len(changes) > 20:
-            print(f"           ... {len(changes) - 20} more changes")
+        if len(classified) > 20:
+            print(f"           ... {len(classified) - 20} more changes")
 
-        return len(changes), "; ".join(lines)
+        # Use the strongest semantic category when there is one dominant
+        # category; otherwise retain the endpoint-level category.
+        semantic_category = (
+            max(categories, key=categories.get)
+            if categories
+            else endpoint_category
+        )
 
-    print(f"           category={category}")
+        return (
+            len(classified),
+            "; ".join(lines),
+            semantic_category,
+            classified,
+        )
+
+    print(f"           category={endpoint_category}")
     print("           body changed but no structured JSON diff")
 
-    return 1, "Response body changed; no structured JSON diff available."
+    return (
+        1,
+        "Response body changed; no structured JSON diff available.",
+        endpoint_category,
+        [],
+    )
 
 
 def main() -> None:
@@ -114,7 +143,12 @@ def main() -> None:
                 print(f"           error={observation.error}")
 
             if state == "CHANGED":
-                change_count, change_summary = describe_changes(
+                (
+                    change_count,
+                    change_summary,
+                    change_category,
+                    classified_changes,
+                ) = describe_changes(
                     observation.name,
                     previous["body"],
                     observation.body,
@@ -126,13 +160,51 @@ def main() -> None:
                         f"{observation.name}"
                     )
 
+                impact_results = assess_changes(classified_changes)
+
+                if impact_results:
+                    severity = max(
+                        (item["severity"] for item in impact_results),
+                        key=lambda value: {
+                            "low": 1,
+                            "medium": 2,
+                            "high": 3,
+                            "critical": 4,
+                        }.get(value, 0),
+                    )
+
+                    directions = {
+                        item["direction"]
+                        for item in impact_results
+                        if item["direction"] != "neutral"
+                    }
+
+                    direction = (
+                        next(iter(directions))
+                        if len(directions) == 1
+                        else "mixed"
+                    )
+
+                    research_priority = highest_priority(impact_results)
+                else:
+                    severity = "low"
+                    direction = "neutral"
+                    research_priority = "low"
+
+                print(f"           severity={severity}")
+                print(f"           direction={direction}")
+                print(f"           research_priority={research_priority}")
+
                 change_id = db.save_protocol_change(
                     endpoint=observation.name,
-                    category=classify_endpoint(observation.name),
+                    category=change_category,
                     previous_snapshot_id=int(previous["id"]),
                     current_snapshot_id=int(saved),
                     change_count=change_count,
                     summary=change_summary,
+                    severity=severity,
+                    direction=direction,
+                    research_priority=research_priority,
                 )
 
                 print(f"           research_change_id={change_id}")

@@ -17,6 +17,7 @@ class Database:
         self.connection.row_factory = sqlite3.Row
 
         self._create_schema()
+        self._migrate_protocol_changes()
 
     def _create_schema(self) -> None:
         self.connection.executescript(
@@ -79,6 +80,35 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_protocol_snapshots_hash
                 ON protocol_snapshots(endpoint, body_hash);
             """
+        )
+
+        self.connection.commit()
+
+    def _migrate_protocol_changes(self) -> None:
+        columns = {
+            row["name"]
+            for row in self.connection.execute(
+                "PRAGMA table_info(protocol_changes)"
+            )
+        }
+
+        additions = {
+            "severity": "TEXT NOT NULL DEFAULT 'low'",
+            "direction": "TEXT NOT NULL DEFAULT 'neutral'",
+            "research_priority": "TEXT NOT NULL DEFAULT 'low'",
+        }
+
+        for name, definition in additions.items():
+            if name not in columns:
+                self.connection.execute(
+                    f"ALTER TABLE protocol_changes "
+                    f"ADD COLUMN {name} {definition}"
+                )
+
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS "
+            "idx_protocol_changes_priority "
+            "ON protocol_changes(research_priority, detected_at)"
         )
 
         self.connection.commit()
@@ -246,6 +276,9 @@ class Database:
         change_count: int,
         summary: str,
         status: str = "detected",
+        severity: str = "low",
+        direction: str = "neutral",
+        research_priority: str = "low",
     ) -> int:
         cursor = self.connection.execute(
             """
@@ -256,9 +289,12 @@ class Database:
                 current_snapshot_id,
                 change_count,
                 summary,
-                status
+                status,
+                severity,
+                direction,
+                research_priority
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 endpoint,
@@ -268,6 +304,9 @@ class Database:
                 change_count,
                 summary,
                 status,
+                severity,
+                direction,
+                research_priority,
             ),
         )
 
